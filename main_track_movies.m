@@ -2,10 +2,11 @@ clear all
 close all
 
 % Path to Mat file
-path = '/home/gm/Documents/Scripts/MATLAB/Tip_results/'; % Input folder path
-fname = 'YC_10'; % File name 
+path = ''; % Input folder path (ADD PATH TO FILE HERE)
+fname = 'Test'; % Filename 
+h5_name = 'back_ratio.h5'; % h5 suffix
 stp = 1; % Start frame number
-smp = 1500; % End frame number
+smp = 81; % End frame number
 
 % Options for analysis
 tip_plot = 1; % Video tip detection
@@ -26,17 +27,26 @@ stopi = 10; % Rectangle/Circle ROI Stop length / no pixelsize means percentage a
 pixelsize = 0.17; % Pixel to um conversion
 
 % Kymo, movie and measurements options
-Cmin = 1.5; % Min pixel value
-Cmax = 6; % Max pixel value
+Cmin = 1.5; % Min pixel value in Ratio stack
+Cmax = 3; % Max pixel value in Ratio stack
 nkymo = 3; % Number of pixels line width average for kymograph (odd number) (0 means no kymo)
 diamcutoff = 0; % In pixels if pixelsize is not given
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Input ratio matrix
-pathf = [path '/' fname]; % File path
-M = h5read([pathf '/' fname '_back_proc_bleach.h5'],'/M'); % Ratio files
-BT1 = h5read([pathf '/' fname '_back_proc_bleach.h5'],'/BT1'); % YFP
-BT2 = h5read([pathf '/' fname '_back_proc_bleach.h5'],'/BT2'); % CFP
+pathf = path;
+read_path = [pathf '/' fname '_' h5_name]; 
+M = h5read(read_path,'/ratio'); % Ratio files
+BT1 = h5read(read_path,'/acceptor'); % Acceptor
+BT2 = h5read(read_path,'/donor'); % Donor
 
+if (max(M(:)) <= 255)
+    M = uint8(M);
+end
+
+% Orient image
+type = find_orient(M(:,:,1));
+        
 % Scaled plot of the growing tube with tip and ROI
 if (tip_plot == 1)
     V = VideoWriter([pathf '/' fname '_growth.avi']);
@@ -45,7 +55,7 @@ if (tip_plot == 1)
 end
 
 if (nkymo > 0 || video_intensity > 0) 
-K = M(:,:,:)./Cmax;
+    K = M(:,:,:)./Cmax;
     K(isnan(K)) = 0;
     Cmin_tmp = Cmin;
     Cmin = Cmin/Cmax;
@@ -64,7 +74,13 @@ end
 for count = smp:-1:stp
     disp(['Image Analysis:' num2str(count)]);
     O = M(:,:,count);
-    P = imbinarize(O,0.5);
+    
+    if (type == 1) O = imrotate(O,-90); 
+    elseif (type == 3) O = imrotate(O,90); 
+    elseif (type == 4) O = imrotate(O,180);
+    end
+    
+    P = imbinarize(O,0.2);
     se = strel('disk',10);
     se2 = strel('disk',1);
     U = imopen(P,se);
@@ -403,35 +419,55 @@ for count = smp:-1:stp
         end
     
     
+        % Rotate BT1 and BT2
+        if (type == 1) BT1r = imrotate(BT1(:,:,count),-90); BT2r = imrotate(BT2(:,:,count),-90);
+        elseif (type == 3) BT1r = imrotate(BT1(:,:,count),90); BT2r = imrotate(BT2(:,:,count),90);
+        elseif (type == 4) BT1r = imrotate(BT1(:,:,count),180); BT2r = imrotate(BT2(:,:,count),180);
+        end
+        
+        
         % Calculate average intensities and pixel numbers
-        Fpixelnum(count) = nnz(O.*F);
+        if (max(O(:)) <= 255) FO = uint8(F);
+        else FO = uint16(F);    
+        end
+        F = uint16(F);
+        
+        Fpixelnum(count) = nnz(O.*FO);
         intensityM(count) = sum(O(:))/nnz(O);
-        intensityM_F(count) = sum(sum(O.*F))/Fpixelnum(count);
-        intensityB1_F(count) = sum(sum(BT1(:,:,count).*F))/Fpixelnum(count);
-        intensityB2_F(count) = sum(sum(BT2(:,:,count).*F))/Fpixelnum(count);
+        intensityM_F(count) = sum(sum(O.*FO))/Fpixelnum(count);
+        intensityB1_F(count) = sum(sum(BT1r.*F))/Fpixelnum(count);
+        intensityB2_F(count) = sum(sum(BT2r.*F))/Fpixelnum(count);
+        
         if (split)
-            F1pixelnum(count) = nnz(O.*F1);
-            F2pixelnum(count) = nnz(O.*F2);
-            intensityM_F1(count) = sum(sum(O.*F1))/F1pixelnum(count);
-            intensityB1_F1(count) = sum(sum(BT1(:,:,count).*F1))/F1pixelnum(count);
-            intensityB2_F1(count) = sum(sum(BT2(:,:,count).*F1))/F1pixelnum(count);
-            intensityM_F2(count) = sum(sum(O.*F2))/F2pixelnum(count);
-            intensityB1_F2(count) = sum(sum(BT1(:,:,count).*F2))/F2pixelnum(count);
-            intensityB2_F2(count) = sum(sum(BT2(:,:,count).*F2))/F2pixelnum(count);
+            if (max(O(:)) <= 255) F1O = uint8(F1); F2O = uint8(F2);
+            else F1O = uint16(F1); F2O = uint16(F2);   
+            end
+        
+            F1 = uint16(F1);
+            F2 = uint16(F2);
+            
+            F1pixelnum(count) = nnz(O.*F1O);
+            F2pixelnum(count) = nnz(O.*F2O);
+            intensityM_F1(count) = sum(sum(O.*F1O))/F1pixelnum(count);
+            intensityB1_F1(count) = sum(sum(BT1r.*F1))/F1pixelnum(count);
+            intensityB2_F1(count) = sum(sum(BT2r.*F1))/F1pixelnum(count);
+            intensityM_F2(count) = sum(sum(O.*F2O))/F2pixelnum(count);
+            intensityB1_F2(count) = sum(sum(BT1r.*F2))/F2pixelnum(count);
+            intensityB2_F2(count) = sum(sum(BT2r.*F2))/F2pixelnum(count);
         end
         
         % Histogram of first and last frame
         if (distributions)
             d = 1;
             if (count == stp || count == smp)
-                Msize = [numel(O),1]; BT1size = [numel(BT1(:,:,count)),1]; BT2size = [numel(BT2(:,:,count)),1];
+                Msize = [numel(O),1]; BT1size = [numel(BT1r),1]; BT2size = [numel(BT2r),1];
                 Mhist(:,d) = reshape(O,Msize);
-                B1hist(:,d) = reshape(BT1(:,:,count),BT1size);
-                B2hist(:,d) = reshape(BT2(:,:,count),BT2size);
+                B1hist(:,d) = reshape(BT1r,BT1size);
+                B2hist(:,d) = reshape(BT2r,BT2size);
                 
-                MhistF(:,d) = reshape(O.*F,Msize);
-                B1histF(:,d) = reshape(BT1(:,:,count).*F,BT1size);
-                B2histF(:,d) = reshape(BT2(:,:,count).*F,BT2size);
+                MhistF(:,d) = reshape(O.*FO,Msize);
+                B1histF(:,d) = reshape(BT1r.*F,BT1size);
+                B2histF(:,d) = reshape(BT2r.*F,BT2size);
             end
             d = d+1;
         end
@@ -449,7 +485,7 @@ for count = smp:-1:stp
     
     % Kymograph
     if (nkymo > 0)
-        if (count == smp) npoints = round(distct(end)*1.1); end
+        if (count == smp) npoints = ceil(distct(end)*1.1); end
         
         % Average number of points across the tube width in kymo based on orientation
         linecte = []; linecte(:,:,1) = [yctk, xctk];
@@ -471,10 +507,10 @@ for count = smp:-1:stp
         end
         kymo = [];
         for a = 1:nkymo
-            kymo(:,a) = improfile(imgaussfilt(L(:,:,count),1.5), linecte(:,2,a), linecte(:,1,a), double(round(distct(end))));
+            kymo(:,a) = improfile(imgaussfilt(L(:,:,count),1.5), linecte(:,2,a), linecte(:,1,a), double(ceil(distct(end))));
         end
         kymo(isnan(kymo)) = 0;
-        kymo_avg(:,count-stp+1) = vertcat(zeros((5 + npoints - round(distct(end))),1), mean(kymo,2));
+        kymo_avg(:,count-stp+1) = vertcat(zeros((5 + npoints - ceil(distct(end))),1), mean(kymo,2));
     end 
 
     % Tip plot
@@ -493,17 +529,9 @@ for count = smp:-1:stp
     else h = figure;
     end
     
-    %subplot(1,2,1)
-    %image1 = U+S2*2+Splot*4;
-    %imagesc(image1)
-    %if (tip_plot) 
-    %    txtstr = strcat('Time(s): ',num2str((count*frame_rate)));
-    %    text(10,10,txtstr,'color','white')
-    %end
-    
     %subplot(1,2,2)
     image2 = U*20+Splot*40;
-    if (ROItype > 0) image2 = image2 +F1*60 + F2*80; end
+    if (ROItype > 0) image2 = image2 + double(F1*60 + F2*80); end
     imagesc(image2);
     
     if (tip_plot)
