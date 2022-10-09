@@ -1,23 +1,35 @@
 function [boundb, tip_final, tip_new, tip_check, diam, maxy, center, phin, axes, stats, edges] = locate_tip(H, tol, major)
 
-% Extract image boundary (longest boundary)
-I = bwboundaries(H,'holes');
-for x = 1:numel(I)
-    tempbw(x) = size(I{x},1);
+rem = [];
+while isempty(rem)
+    
+    % Extract image boundary (longest boundary)
+    I = bwboundaries(H,'holes');
+    for x = 1:numel(I)
+        tempbw(x) = size(I{x},1);
+    end
+    [tmp posI] = max(tempbw);
+    bound = I{posI};
+    
+    stats = regionprops(H,'Orientation','MajorAxisLength', 'BoundingBox', ...
+        'MinorAxisLength', 'Eccentricity', 'Centroid','Area','FilledImage');
+    
+    % Fit an ellipse to the entire image and get the maximum point
+    %major = [stats.Centroid(2) + stats.MajorAxisLength*0.5 * sin(pi*stats.Orientation/180) ...
+    %    stats.Centroid(1) - stats.MajorAxisLength*0.5 * cos(pi*stats.Orientation/180)];
+    
+    % Remove points on the extreme right
+    maxy = size(H,2);
+    rem = find(bound(:,2) == maxy); bound(rem,:) = [];
+    
+    H(:,end) = [];
+    
+    
+    
 end
-[tmp posI] = max(tempbw);
-bound = I{posI};
 
-stats = regionprops(H,'Orientation','MajorAxisLength', 'BoundingBox', ...
-    'MinorAxisLength', 'Eccentricity', 'Centroid','Area','FilledImage');
+bound(rem,:) = [];
 
-% Fit an ellipse to the entire image and get the maximum point
-%major = [stats.Centroid(2) + stats.MajorAxisLength*0.5 * sin(pi*stats.Orientation/180) ...
-%    stats.Centroid(1) - stats.MajorAxisLength*0.5 * cos(pi*stats.Orientation/180)];
-
-% Remove points on the extreme right
-maxy = size(H,2);
-rem = find(bound(:,2) == maxy); bound(rem,:) = [];
 
 % Find points on the convex hull
 hullo = convhull(bound(:,1),bound(:,2));
